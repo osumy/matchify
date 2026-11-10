@@ -125,7 +125,7 @@ def merge_databases(
 def main():
     parser = argparse.ArgumentParser(description="Merge Matchify shards and export Strict & Loose databases")
     parser.add_argument("--platform", choices=["neshan", "balad", "gmaps"], required=True, help="Map platform name")
-    parser.add_argument("--shard-pattern", type=str, required=True, help="Glob pattern for shards (e.g. 'data/results/neshan_shard_*.db')")
+    parser.add_argument("--shard-pattern", type=str, default=None, help="Glob pattern for shards (default: 'data/results/<platform>_shard_*.db')")
     parser.add_argument("--master-db", type=str, default=None, help="Output path for master DB")
     parser.add_argument("--strict-db", type=str, default=None, help="Output path for strict DB")
     parser.add_argument("--loose-db", type=str, default=None, help="Output path for loose DB")
@@ -133,12 +133,13 @@ def main():
     args = parser.parse_args()
 
     platform = args.platform.lower()
+    shard_pattern = args.shard_pattern or f"data/results/{platform}_shard_*.db"
     master_db = args.master_db or f"data/master/{platform}_master.db"
     strict_db = args.strict_db or f"data/master/{platform}_matched_strict.db"
     loose_db = args.loose_db or f"data/master/{platform}_matched_loose.db"
 
     merge_databases(
-        shard_pattern=args.shard_pattern,
+        shard_pattern=shard_pattern,
         master_output_db=master_db,
         strict_output_db=strict_db,
         loose_output_db=loose_db,

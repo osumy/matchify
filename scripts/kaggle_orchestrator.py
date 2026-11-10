@@ -21,8 +21,21 @@ def set_kaggle_env():
 
 def run_cmd(cmd_list: list[str]) -> tuple[int, str]:
     set_kaggle_env()
-    proc = subprocess.run(cmd_list, capture_output=True, text=True, encoding="utf-8")
-    return proc.returncode, proc.stdout + "\n" + proc.stderr
+    # Use stdout/stderr redirection or communicate to prevent pipe buffer deadlocks
+    try:
+        proc = subprocess.Popen(
+            cmd_list,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace"
+        )
+        stdout, stderr = proc.communicate(timeout=180)
+        return proc.returncode, (stdout or "") + "\n" + (stderr or "")
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        return 1, "Command timed out after 180s"
 
 
 def upload_dataset(shard_idx: int, staging_dir: Path, shards_dir: Path) -> str:
@@ -50,14 +63,24 @@ def upload_dataset(shard_idx: int, staging_dir: Path, shards_dir: Path) -> str:
         json.dump(meta, f, indent=2)
 
     print(f"📦 Uploading dataset '{ds_id}'...", flush=True)
-    code, out = run_cmd([PYTHON_BIN, "-m", "kaggle", "datasets", "create", "-p", str(ds_dir)])
+    code, out = run_cmd([PYTHON_BIN, "-m", "kaggle", "datasets", "create", "-p", str(ds_dir), "-q"])
     print(out.strip(), flush=True)
     if "already exists" in out.lower() or "please choose another name" in out.lower():
         print(f"ℹ️ Dataset already exists, versioning...", flush=True)
-        code, out = run_cmd([PYTHON_BIN, "-m", "kaggle", "datasets", "version", "-p", str(ds_dir), "-m", "Update shard db"])
+        code, out = run_cmd([PYTHON_BIN, "-m", "kaggle", "datasets", "version", "-p", str(ds_dir), "-m", "Update shard db", "-q"])
         print(out.strip(), flush=True)
 
     return ds_id
+
+
+def check_status(kernel_id: str) -> str:
+    code, out = run_cmd([PYTHON_BIN, "-m", "kaggle", "kernels", "status", kernel_id])
+    for line in out.splitlines():
+        if "has status" in line:
+            return line.split("has status")[-1].strip().strip('"')
+    if "Cannot access kernel" in out or "denied" in out or "not found" in out.lower():
+        return "NOT_STARTED"
+    return out.strip()
 
 
 def push_kernel(shard_idx: int, platform: str, staging_dir: Path, notebook_path: Path) -> str:
@@ -90,14 +113,6 @@ def push_kernel(shard_idx: int, platform: str, staging_dir: Path, notebook_path:
     code, out = run_cmd([PYTHON_BIN, "-m", "kaggle", "kernels", "push", "-p", str(k_dir)])
     print(out.strip(), flush=True)
     return kernel_id
-
-
-def check_status(kernel_id: str) -> str:
-    code, out = run_cmd([PYTHON_BIN, "-m", "kaggle", "kernels", "status", kernel_id])
-    for line in out.splitlines():
-        if "has status" in line:
-            return line.split("has status")[-1].strip().strip('"')
-    return out.strip()
 
 
 def download_output(kernel_id: str, dest_dir: Path) -> bool:
