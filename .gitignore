@@ -39,6 +39,7 @@ data/**/*.db-shm
 data/shards/*
 data/results/*
 data/master/*
+kaggle_staging/
 !data/.gitkeep
 !data/shards/.gitkeep
 !data/results/.gitkeep
